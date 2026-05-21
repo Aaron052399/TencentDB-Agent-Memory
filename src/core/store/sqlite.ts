@@ -21,7 +21,10 @@
  */
 
 import { createRequire } from "node:module";
-import type { DatabaseSync, StatementSync } from "node:sqlite";
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const require = createRequire(import.meta.url);
+
+import Database from "better-sqlite3";
 import type { MemoryRecord } from "../record/l1-writer.js";
 import type { EmbeddingProviderInfo } from "./embedding.js";
 import type {
@@ -134,11 +137,9 @@ export interface VectorStoreInitResult {
   reason?: string;
 }
 
-// Use createRequire to load the experimental node:sqlite module
-const require = createRequire(import.meta.url);
-
-function requireNodeSqlite(): typeof import("node:sqlite") {
-  return require("node:sqlite") as typeof import("node:sqlite");
+// Database opening function — now uses better-sqlite3
+function openDatabase(dbPath: string): Database.Database {
+  return new Database(dbPath);
 }
 
 // ============================
@@ -337,7 +338,7 @@ export interface L0FtsSearchResult {
 // ============================
 
 export class VectorStore implements IMemoryStore {
-  private db: DatabaseSync;
+  private db: Database.Database;
   private readonly dimensions: number;
   private readonly logger?: Logger;
 
@@ -362,47 +363,47 @@ export class VectorStore implements IMemoryStore {
   private vecTablesReady = false;
 
   // Prepared statements — L1 (initialized in init())
-  private stmtUpsertMeta!: StatementSync;
-  private stmtDeleteVec?: StatementSync;   // optional — only set when vecTablesReady
-  private stmtInsertVec?: StatementSync;   // optional — only set when vecTablesReady
-  private stmtDeleteMeta!: StatementSync;
-  private stmtGetMeta!: StatementSync;
-  private stmtSearchVec?: StatementSync;   // optional — only set when vecTablesReady
-  private stmtQueryBySessionId!: StatementSync;
-  private stmtQueryBySessionIdSince!: StatementSync;
-  private stmtQueryBySessionKey!: StatementSync;
-  private stmtQueryBySessionKeySince!: StatementSync;
-  private stmtQueryAll!: StatementSync;
-  private stmtQueryAllSince!: StatementSync;
+  private stmtUpsertMeta!: any;
+  private stmtDeleteVec?: any;   // optional — only set when vecTablesReady
+  private stmtInsertVec?: any;   // optional — only set when vecTablesReady
+  private stmtDeleteMeta!: any;
+  private stmtGetMeta!: any;
+  private stmtSearchVec?: any;   // optional — only set when vecTablesReady
+  private stmtQueryBySessionId!: any;
+  private stmtQueryBySessionIdSince!: any;
+  private stmtQueryBySessionKey!: any;
+  private stmtQueryBySessionKeySince!: any;
+  private stmtQueryAll!: any;
+  private stmtQueryAllSince!: any;
 
   // Prepared statements — L0 (initialized in init())
-  private stmtL0UpsertMeta!: StatementSync;
-  private stmtL0DeleteVec?: StatementSync;   // optional — only set when vecTablesReady
-  private stmtL0InsertVec?: StatementSync;   // optional — only set when vecTablesReady
-  private stmtL0DeleteMeta!: StatementSync;
-  private stmtL0GetMeta!: StatementSync;
-  private stmtL0SearchVec?: StatementSync;   // optional — only set when vecTablesReady
+  private stmtL0UpsertMeta!: any;
+  private stmtL0DeleteVec?: any;   // optional — only set when vecTablesReady
+  private stmtL0InsertVec?: any;   // optional — only set when vecTablesReady
+  private stmtL0DeleteMeta!: any;
+  private stmtL0GetMeta!: any;
+  private stmtL0SearchVec?: any;   // optional — only set when vecTablesReady
   /** L0 query for L1 runner: all messages for a session key */
-  private stmtL0QueryAll!: StatementSync;
+  private stmtL0QueryAll!: any;
   /** L0 query for L1 runner: messages after a timestamp cursor */
-  private stmtL0QueryAfter!: StatementSync;
+  private stmtL0QueryAfter!: any;
   /** L1 cursor-based pagination for migration (by PK) */
-  private stmtL1QueryMigrationCursor!: StatementSync;
+  private stmtL1QueryMigrationCursor!: any;
   /** L0 cursor-based pagination for migration (by PK) */
-  private stmtL0QueryMigrationCursor!: StatementSync;
+  private stmtL0QueryMigrationCursor!: any;
 
   // FTS5 tables availability flag (created best-effort — may be false if fts5 is not compiled in)
   private ftsAvailable = false;
 
   // Prepared statements — FTS5 L1 (initialized in init())
-  private stmtL1FtsInsert!: StatementSync;
-  private stmtL1FtsDelete!: StatementSync;
-  private stmtL1FtsSearch!: StatementSync;
+  private stmtL1FtsInsert!: any;
+  private stmtL1FtsDelete!: any;
+  private stmtL1FtsSearch!: any;
 
   // Prepared statements — FTS5 L0 (initialized in init())
-  private stmtL0FtsInsert!: StatementSync;
-  private stmtL0FtsDelete!: StatementSync;
-  private stmtL0FtsSearch!: StatementSync;
+  private stmtL0FtsInsert!: any;
+  private stmtL0FtsDelete!: any;
+  private stmtL0FtsSearch!: any;
 
   /**
    * Create a VectorStore instance.
@@ -414,9 +415,8 @@ export class VectorStore implements IMemoryStore {
     this.dimensions = dimensions;
     this.logger = logger;
 
-    // Open database with extension support enabled
-    const { DatabaseSync: DbSync } = requireNodeSqlite();
-    this.db = new DbSync(dbPath, { allowExtension: true });
+    // Open database
+    this.db = openDatabase(dbPath) as unknown as Database.Database;
 
     // Set busy timeout so concurrent processes retry instead of failing with SQLITE_BUSY
     this.db.exec("PRAGMA busy_timeout = 5000");
@@ -458,7 +458,6 @@ export class VectorStore implements IMemoryStore {
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const sqliteVec = require("sqlite-vec");
-      this.db.enableLoadExtension(true);
       sqliteVec.load(this.db);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
